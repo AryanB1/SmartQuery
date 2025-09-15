@@ -1,5 +1,6 @@
 gradle/
 .gradle/
 build/
-
-
+src/main/java/smartquery/query/SqlParser*.java
+src/main/java/smartquery/query/SqlParser*.tokens
+src/main/java/smartquery/query/SqlParser*.interp
