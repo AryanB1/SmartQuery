@@ -2,102 +2,527 @@ package smartquery;
 
 import smartquery.storage.ColumnStore;
 import smartquery.ingest.IngestService;
-import smartquery.ingest.kafka.KafkaIngestConsumer;
-import smartquery.ingest.http.HttpIngestController;
+import smartquery.query.QueryService;
+import smartquery.index.IndexManager;
+import smartquery.metrics.MetricsCollector;
+import smartquery.metrics.MetricsTimer;
+import smartquery.query.QueryApi;
 import smartquery.ingest.model.Event;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Main application class for SmartQuery database.
- * This is a simplified version that demonstrates the core functionality
- * without full Spring Boot web server integration.
+ * Main application class that wires together all SmartQuery components.
  */
 public class SmartQueryApplication {
     
+    // Core components
     private final ColumnStore columnStore;
     private final IngestService ingestService;
-    private final KafkaIngestConsumer kafkaConsumer;
-    private final HttpIngestController httpController;
+    private final QueryService queryService;
+    private final IndexManager indexManager;
+    private final MetricsCollector metrics;
+    
+    // Background services
+    private final ScheduledExecutorService metricsScheduler;
+    private final AtomicBoolean running = new AtomicBoolean(true);
+    
+    // Configuration
+    private final boolean loadSyntheticData;
+    private final int syntheticDataCount;
+    private final int metricsReportIntervalSeconds;
+    
     
     public SmartQueryApplication() {
-        // Initialize components
-        this.columnStore = new ColumnStore();
-        this.ingestService = new IngestService(columnStore);
-        this.kafkaConsumer = new KafkaIngestConsumer(ingestService);
-        this.httpController = new HttpIngestController(ingestService);
-        
-        // Start Kafka consumer
-        kafkaConsumer.start();
+        this(parseArgs(new String[0]));
     }
     
+    public SmartQueryApplication(Config config) {
+        this.loadSyntheticData = config.loadSyntheticData;
+        this.syntheticDataCount = config.syntheticDataCount;
+        this.metricsReportIntervalSeconds = config.metricsReportIntervalSeconds;
+        
+        this.metrics = new MetricsCollector();
+        this.columnStore = new ColumnStore();
+        this.ingestService = new IngestService(columnStore);
+        this.queryService = new QueryService(columnStore);
+        this.indexManager = new IndexManager();
+        
+        this.metricsScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "metrics");
+            t.setDaemon(true);
+            return t;
+        });
+    }
+    
+    
     public static void main(String[] args) {
-        SmartQueryApplication app = new SmartQueryApplication();
-        app.run();
+        SmartQueryApplication app = new SmartQueryApplication(parseArgs(args));
+        
+        Runtime.getRuntime().addShutdownHook(new Thread(app::shutdown));
+        
+        try {
+            app.run();
+        } catch (Exception e) {
+            System.err.println("Fatal error: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+        }
     }
     
     public void run() {
-        System.out.println("SmartQuery Database Starting...");
-        System.out.println("Ingest Service: Ready");
-        System.out.println("Column Store: Ready");
-        System.out.println("Kafka Consumer: Started");
+        // Display startup banner
+        displayStartupBanner();
         
-        // Demonstrate functionality with some test data
-        demonstrateIngestion();
+        // Start background services
+        startBackgroundServices();
         
-        // Keep the application running
-        try {
-            System.out.println("\nSmartQuery is running. Press Ctrl+C to stop.");
-            
-            // Print stats every 10 seconds
-            while (true) {
-                Thread.sleep(10000);
-                printStats();
-            }
-        } catch (InterruptedException e) {
-            System.out.println("\nShutting down...");
-            shutdown();
+        // Load synthetic data if requested
+        if (loadSyntheticData) {
+            loadSyntheticData();
         }
+        
+        // Start console REPL
+        startConsoleRepl();
     }
     
-    private void demonstrateIngestion() {
-        System.out.println("\n--- Demonstrating Event Ingestion ---");
+    
+    private void displayStartupBanner() {
+        System.out.println("SmartQuery Database Engine v1.0");
+        System.out.println("Configuration: " + getIngestBatchSize() + " events/batch, " + 
+                          metricsReportIntervalSeconds + "s metrics, " + 
+                          (loadSyntheticData ? syntheticDataCount + " synthetic events" : "no synthetic data"));
+        System.out.println();
+    }
+    
+    
+    private void startBackgroundServices() {
+        metricsScheduler.scheduleAtFixedRate(
+            this::reportMetrics,
+            metricsReportIntervalSeconds,
+            metricsReportIntervalSeconds,
+            TimeUnit.SECONDS
+        );
+    }
+    
+    private void loadSyntheticData() {
+        long startTime = System.currentTimeMillis();
+        List<Event> events = generateSyntheticEvents(syntheticDataCount);
+        int submitted = ingestService.submit(events);
+        ingestService.flush();
+        long loadTime = System.currentTimeMillis() - startTime;
         
-        // Create some sample events
-        List<Event> testEvents = Arrays.asList(
-            new Event("user123", "login").addProperty("ip", "192.168.1.1"),
-            new Event("user456", "page_view").addProperty("page", "/dashboard"),
-            new Event("user123", "click").addProperty("button", "submit"),
-            new Event("user789", "purchase").addProperty("amount", "29.99")
+        System.out.println("Loaded " + submitted + " events in " + loadTime + "ms");
+        displayDataSummary();
+    }
+    
+    
+    private List<Event> generateSyntheticEvents(int count) {
+        List<Event> events = new ArrayList<>();
+        Random random = new Random(42); // Fixed seed for reproducible data
+        
+        String[] userIds = {"user001", "user002", "user003", "user004", "user005", 
+                           "user006", "user007", "user008", "user009", "user010"};
+        String[] eventTypes = {"login", "logout", "page_view", "click", "purchase", "signup"};
+        String[] pages = {"/home", "/dashboard", "/profile", "/settings", "/checkout", "/product"};
+        String[] browsers = {"Chrome", "Firefox", "Safari", "Edge"};
+        String[] countries = {"US", "UK", "CA", "DE", "FR", "JP", "AU"};
+        
+        long baseTime = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7); // Start from 7 days ago
+        
+        for (int i = 0; i < count; i++) {
+            String userId = userIds[random.nextInt(userIds.length)];
+            String eventType = eventTypes[random.nextInt(eventTypes.length)];
+            
+            Event event = new Event(userId, eventType);
+            event.ts = baseTime + random.nextInt((int) TimeUnit.DAYS.toMillis(7)); // Random time in last 7 days
+            
+            // Set table based on event type
+            if (eventType.equals("purchase")) {
+                event.table = "transactions";
+                event.addProperty("amount", String.valueOf(random.nextInt(1000) + 10));
+                event.addProperty("currency", "USD");
+            } else {
+                event.table = "user_events";
+            }
+            
+            // Add common properties
+            event.addProperty("browser", browsers[random.nextInt(browsers.length)]);
+            event.addProperty("country", countries[random.nextInt(countries.length)]);
+            event.addProperty("ip", "192.168." + random.nextInt(256) + "." + random.nextInt(256));
+            
+            // Add event-specific properties
+            if (eventType.equals("page_view") || eventType.equals("click")) {
+                event.addProperty("page", pages[random.nextInt(pages.length)]);
+            }
+            
+            events.add(event);
+        }
+        
+        return events;
+    }
+    
+    private void displayDataSummary() {
+        Map<String, Object> stats = ingestService.stats();
+        System.out.println("Tables: " + queryService.getTableNames() + ", Events: " + stats.get("store"));
+    }
+    
+    private void startConsoleRepl() {
+        System.out.println("SQL Console (type 'help' for commands, 'exit' to quit):");
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+        
+        while (running.get()) {
+            try {
+                System.out.print("smartquery> ");
+                String input = reader.readLine();
+                
+                if (input == null || input.trim().isEmpty()) {
+                    continue;
+                }
+                
+                String command = input.trim().toLowerCase();
+                
+                // Handle special commands
+                if (command.equals("exit") || command.equals("quit")) {
+                    break;
+                } else if (command.equals("help")) {
+                    displayHelp();
+                    continue;
+                } else if (command.equals("stats")) {
+                    displayDetailedStats();
+                    continue;
+                } else if (command.equals("tables")) {
+                    displayTables();
+                    continue;
+                } else if (command.equals("clear")) {
+                    clearScreen();
+                    continue;
+                }
+                
+                // Execute SQL query
+                executeQuery(input.trim());
+                
+            } catch (IOException e) {
+                System.err.println("Error reading input: " + e.getMessage());
+                break;
+            } catch (Exception e) {
+                System.err.println("Unexpected error: " + e.getMessage());
+            }
+        }
+        
+        System.out.println("Goodbye!");
+    }
+    
+    private void executeQuery(String sql) {
+        if (sql.isEmpty()) return;
+        
+        // Record query metrics
+        var queryTimer = MetricsTimer.start(
+            metrics.getHistogram("smartquery_query_duration_ms"),
+            metrics.incCounter("smartquery_queries_success"),
+            metrics.incCounter("smartquery_queries_failed")
         );
         
-        // Submit via HTTP controller simulation
-        String result = httpController.ingestEvents(testEvents);
-        System.out.println("HTTP Ingestion Result: " + result);
-        
-        // Print initial stats
-        printStats();
-    }
-    
-    private void printStats() {
-        Map<String, Object> stats = httpController.getStats();
-        System.out.println("\n--- System Stats ---");
-        for (Map.Entry<String, Object> entry : stats.entrySet()) {
-            System.out.println(entry.getKey() + ": " + entry.getValue());
+        try {
+            long startTime = System.currentTimeMillis();
+            
+            // Execute query
+            QueryApi.QueryResult result = queryService.executeQuery(sql);
+            
+            long executionTime = System.currentTimeMillis() - startTime;
+            
+            // Display results
+            displayQueryResult(result, executionTime);
+            
+            queryTimer.success();
+            
+        } catch (Exception e) {
+            System.err.println("Query failed: " + e.getMessage());
+            queryTimer.failure();
         }
-        System.out.println("Health: " + httpController.getHealth());
     }
     
-    private void shutdown() {
-        kafkaConsumer.stop();
+    private void displayQueryResult(QueryApi.QueryResult result, long executionTime) {
+        if (result.rows.isEmpty()) {
+            System.out.println("No rows returned.");
+        } else {
+            // Display column headers
+            System.out.println();
+            for (int i = 0; i < result.columns.size(); i++) {
+                System.out.printf("%-20s", result.columns.get(i));
+                if (i < result.columns.size() - 1) System.out.print(" | ");
+            }
+            System.out.println();
+            
+            // Display separator
+            for (int i = 0; i < result.columns.size(); i++) {
+                System.out.print("--------------------");
+                if (i < result.columns.size() - 1) System.out.print("-+-");
+            }
+            System.out.println();
+            
+            // Display data rows (limit to first 100 for readability)
+            int displayRows = Math.min(result.rows.size(), 100);
+            for (int i = 0; i < displayRows; i++) {
+                List<Object> row = result.rows.get(i);
+                for (int j = 0; j < row.size(); j++) {
+                    Object value = row.get(j);
+                    String displayValue = value != null ? value.toString() : "NULL";
+                    if (displayValue.length() > 18) {
+                        displayValue = displayValue.substring(0, 15) + "...";
+                    }
+                    System.out.printf("%-20s", displayValue);
+                    if (j < row.size() - 1) System.out.print(" | ");
+                }
+                System.out.println();
+            }
+            
+            if (result.rows.size() > displayRows) {
+                System.out.println("... (" + (result.rows.size() - displayRows) + " more rows)");
+            }
+        }
+        
+        System.out.println();
+        System.out.println("Returned " + result.rows.size() + " rows in " + executionTime + "ms");
+        System.out.println();
+    }
+    
+    private void displayHelp() {
+        System.out.println();
+        System.out.println("--- SmartQuery Help ---");
+        System.out.println("SQL Commands:");
+        System.out.println("  SELECT * FROM table_name");
+        System.out.println("  SELECT column1, column2 FROM table_name WHERE condition");
+        System.out.println("  SELECT COUNT(*) FROM table_name");
+        System.out.println("  SELECT column1, COUNT(*) FROM table_name GROUP BY column1");
+        System.out.println();
+        System.out.println("Console Commands:");
+        System.out.println("  help    - Show this help");
+        System.out.println("  stats   - Show detailed system statistics");
+        System.out.println("  tables  - List available tables");
+        System.out.println("  clear   - Clear the screen");
+        System.out.println("  exit    - Exit SmartQuery");
+        System.out.println();
+        System.out.println("Example Queries:");
+        System.out.println("  SELECT * FROM user_events LIMIT 10");
+        System.out.println("  SELECT userId, COUNT(*) FROM user_events GROUP BY userId");
+        System.out.println("  SELECT * FROM transactions WHERE amount > 100");
+        System.out.println();
+    }
+    
+    private void displayDetailedStats() {
+        System.out.println();
+        System.out.println("--- Detailed System Statistics ---");
+        
+        // Ingest stats
+        Map<String, Object> ingestStats = ingestService.stats();
+        System.out.println("Ingest Service:");
+        System.out.println("  Buffer size: " + ingestStats.get("bufferSize"));
+        System.out.println("  Dropped events: " + ingestStats.get("dropped"));
+        System.out.println("  Batch size: " + ingestStats.get("batchSize"));
+        System.out.println("  Flush interval: " + ingestStats.get("flushMillis") + "ms");
+        
+        // Storage stats
+        @SuppressWarnings("unchecked")
+        Map<String, Object> storageStats = (Map<String, Object>) ingestStats.get("store");
+        System.out.println("Storage:");
+        System.out.println("  Total events: " + storageStats.get("totalEvents"));
+        System.out.println("  Total batches: " + storageStats.get("totalBatches"));
+        System.out.println("  Tables count: " + storageStats.get("tablesCount"));
+        
+        // Index stats
+        Map<String, Object> indexStats = indexManager.stats();
+        System.out.println("Indexes:");
+        System.out.println("  Total indexes: " + indexStats.get("totalIndexes"));
+        System.out.println("  Memory usage: " + formatBytes((Long) indexStats.get("memoryBytes")));
+        System.out.println("  Memory budget: " + indexStats.get("memoryBudgetMB") + " MB");
+        
+        // Metrics stats
+        Map<String, Object> metricsSnapshot = metrics.snapshot();
+        System.out.println("Metrics:");
+        for (Map.Entry<String, Object> entry : metricsSnapshot.entrySet()) {
+            if (entry.getKey().startsWith("smartquery_")) {
+                System.out.println("  " + entry.getKey() + ": " + entry.getValue());
+            }
+        }
+        
+        // JVM stats
+        Runtime runtime = Runtime.getRuntime();
+        System.out.println("JVM:");
+        System.out.println("  Used memory: " + formatBytes(runtime.totalMemory() - runtime.freeMemory()));
+        System.out.println("  Free memory: " + formatBytes(runtime.freeMemory()));
+        System.out.println("  Total memory: " + formatBytes(runtime.totalMemory()));
+        System.out.println("  Max memory: " + formatBytes(runtime.maxMemory()));
+        
+        System.out.println();
+    }
+    
+    private void displayTables() {
+        System.out.println();
+        System.out.println("--- Available Tables ---");
+        List<String> tables = queryService.getTableNames();
+        if (tables.isEmpty()) {
+            System.out.println("No tables found. Load some data first.");
+        } else {
+            for (String table : tables) {
+                long count = queryService.getTotalEventCount(); // This is total, would need per-table count
+                System.out.println("  " + table + " (events loaded)");
+            }
+        }
+        System.out.println();
+    }
+    
+    private void clearScreen() {
+        // ANSI escape code to clear screen
+        System.out.print("\033[2J\033[H");
+        System.out.flush();
+    }
+    
+    private void reportMetrics() {
+        if (!running.get()) return;
+        
+        System.out.println();
+        System.out.println("--- Metrics Report [" + new Date() + "] ---");
+        
+        // Query metrics
+        var queryHistogram = metrics.getHistogram("smartquery_query_duration_ms");
+        var successCounter = metrics.incCounter("smartquery_queries_success");
+        var failedCounter = metrics.incCounter("smartquery_queries_failed");
+        
+        if (queryHistogram.count() > 0) {
+            System.out.println("Queries:");
+            System.out.println("  Total: " + queryHistogram.count());
+            System.out.println("  Success: " + successCounter.value());
+            System.out.println("  Failed: " + failedCounter.value());
+            System.out.println("  Avg duration: " + String.format("%.1f", queryHistogram.sum() / queryHistogram.count()) + "ms");
+        }
+        
+        // Storage metrics
+        long totalEvents = queryService.getTotalEventCount();
+        System.out.println("Storage:");
+        System.out.println("  Total events: " + totalEvents);
+        System.out.println("  Tables: " + queryService.getTableNames().size());
+        
+        // Index metrics
+        Map<String, Object> indexStats = indexManager.stats();
+        System.out.println("Indexes:");
+        System.out.println("  Count: " + indexStats.get("totalIndexes"));
+        System.out.println("  Memory: " + formatBytes((Long) indexStats.get("memoryBytes")));
+        
+        // Memory metrics
+        Runtime runtime = Runtime.getRuntime();
+        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+        System.out.println("JVM Memory:");
+        System.out.println("  Used: " + formatBytes(usedMemory));
+        System.out.println("  Free: " + formatBytes(runtime.freeMemory()));
+        System.out.println("  Utilization: " + String.format("%.1f", 100.0 * usedMemory / runtime.totalMemory()) + "%");
+        
+        System.out.println();
+        System.out.print("smartquery> "); // Restore prompt
+    }
+    
+    public void shutdown() {
+        running.set(false);
+        
+        System.out.println("Stopping background services...");
+        
+        // Stop metrics reporting
+        metricsScheduler.shutdown();
+        
+        // Flush any remaining data
+        System.out.println("Flushing remaining data...");
+        ingestService.flush();
+        
+        // Stop services
+        System.out.println("Stopping ingest service...");
         ingestService.stop();
+        
+        System.out.println("Stopping index manager...");
+        indexManager.shutdown();
+        
+        // Wait for background tasks to complete
+        try {
+            if (!metricsScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                metricsScheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            metricsScheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        
         System.out.println("SmartQuery shutdown complete.");
+    }
+    
+    private int getIngestBatchSize() {
+        return Integer.getInteger("ingest.batchSize", 10_000);
+    }
+    
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
+    }
+    
+    private static Config parseArgs(String[] args) {
+        Config config = new Config();
+        
+        for (int i = 0; i < args.length; i++) {
+            switch (args[i]) {
+                case "--synthetic-data":
+                    config.loadSyntheticData = true;
+                    if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                        config.syntheticDataCount = Integer.parseInt(args[++i]);
+                    }
+                    break;
+                case "--metrics-interval":
+                    if (i + 1 < args.length) {
+                        config.metricsReportIntervalSeconds = Integer.parseInt(args[++i]);
+                    }
+                    break;
+                case "--help":
+                    printUsage();
+                    System.exit(0);
+                    break;
+            }
+        }
+        
+        return config;
+    }
+    
+    private static void printUsage() {
+        System.out.println("SmartQuery Database Engine");
+        System.out.println();
+        System.out.println("Usage: java -jar smartquery.jar [options]");
+        System.out.println();
+        System.out.println("Options:");
+        System.out.println("  --synthetic-data [count]    Load synthetic test data (default: 10000 events)");
+        System.out.println("  --metrics-interval <sec>    Metrics reporting interval (default: 30 seconds)");
+        System.out.println("  --help                      Show this help message");
+        System.out.println();
+        System.out.println("Examples:");
+        System.out.println("  java -jar smartquery.jar");
+        System.out.println("  java -jar smartquery.jar --synthetic-data 50000");
+        System.out.println("  java -jar smartquery.jar --synthetic-data --metrics-interval 60");
+    }
+    
+    public static class Config {
+        public boolean loadSyntheticData = false;
+        public int syntheticDataCount = 10_000;
+        public int metricsReportIntervalSeconds = 30;
     }
     
     // Getters for testing
     public ColumnStore getColumnStore() { return columnStore; }
     public IngestService getIngestService() { return ingestService; }
-    public HttpIngestController getHttpController() { return httpController; }
+    public QueryService getQueryService() { return queryService; }
+    public IndexManager getIndexManager() { return indexManager; }
+    public MetricsCollector getMetrics() { return metrics; }
 }
