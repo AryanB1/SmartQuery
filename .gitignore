@@ -6,3 +6,4 @@ src/main/java/smartquery/query/SqlParser*.tokens
 src/main/java/smartquery/query/SqlParser*.interp
 frontend/node_modules/
 *.sh
+.vscode/
