@@ -7,10 +7,17 @@ plugins {
 
 group = 'smartquery'
 version = '0.0.1-SNAPSHOT'
+description = 'SmartQuery'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(19)
+        languageVersion = JavaLanguageVersion.of(24)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
     }
 }
 
@@ -19,30 +26,50 @@ repositories {
 }
 
 dependencies {
+    // Spring Boot starters
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    
+    // Kafka client
     implementation 'org.apache.kafka:kafka-clients:3.5.1'
+    
+    // JSON processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     
+    // Development tools
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    
+    // Testing
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.mockito:mockito-core'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
-}
-
-sourceSets {
-    main {
-        java {
-            srcDirs = ["src/main/java", "ingest", "storage"]
-        }
-    }
-    test {
-        java {
-            srcDirs = ["src/test/java"]
-        }
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
     }
 }
 
 application {
     mainClass = 'smartquery.SmartQueryApplication'
+}
+
+// Additional tasks for development
+tasks.register('runTests') {
+    group = 'verification'
+    description = 'Run all tests with detailed output'
+    dependsOn test
+}
+
+// JVM arguments for better performance during development
+tasks.named('bootRun') {
+    jvmArgs = [
+        '-XX:+UseZGC',
+        '-Xmx2g',
+        '-Dspring.profiles.active=dev'
+    ]
 }

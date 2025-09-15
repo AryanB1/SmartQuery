@@ -2,9 +2,9 @@ package smartquery.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import storage.ColumnStore;
-import ingest.IngestService;
-import ingest.kafka.KafkaIngestConsumer;
+import smartquery.storage.ColumnStore;
+import smartquery.ingest.IngestService;
+import smartquery.ingest.kafka.KafkaIngestConsumer;
 
 @Configuration
 public class SmartQueryConfig {

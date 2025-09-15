@@ -1,11 +1,11 @@
-package storage;
+package smartquery.storage;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import static org.junit.jupiter.api.Assertions.*;
 
-import ingest.model.Event;
-import storage.ColumnStore.Row;
+import smartquery.ingest.model.Event;
+import smartquery.storage.ColumnStore.Row;
 
 import java.util.Arrays;
 import java.util.List;

@@ -1,4 +1,4 @@
-package ingest.model;
+package smartquery.ingest.model;
 
 import java.time.Instant;
 import java.util.HashMap;

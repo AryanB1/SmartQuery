@@ -1,7 +1,7 @@
-package ingest.http;
+package smartquery.ingest.http;
 
-import ingest.model.Event;
-import ingest.IngestService;
+import smartquery.ingest.model.Event;
+import smartquery.ingest.IngestService;
 import java.util.List;
 import java.util.Map;
 

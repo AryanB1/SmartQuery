@@ -1,6 +1,6 @@
-package storage;
+package smartquery.storage;
 
-import ingest.model.Event;
+import smartquery.ingest.model.Event;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;

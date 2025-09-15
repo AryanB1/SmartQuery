@@ -1,12 +1,12 @@
-package ingest.http;
+package smartquery.ingest.http;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import static org.junit.jupiter.api.Assertions.*;
 
-import ingest.model.Event;
-import ingest.IngestService;
-import storage.ColumnStore;
+import smartquery.ingest.model.Event;
+import smartquery.ingest.IngestService;
+import smartquery.storage.ColumnStore;
 
 import java.util.Arrays;
 import java.util.List;

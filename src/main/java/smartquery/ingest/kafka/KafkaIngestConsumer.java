@@ -1,7 +1,7 @@
-package ingest.kafka;
+package smartquery.ingest.kafka;
 
-import ingest.IngestService;
-import ingest.model.Event;
+import smartquery.ingest.IngestService;
+import smartquery.ingest.model.Event;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 

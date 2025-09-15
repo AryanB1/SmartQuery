@@ -5,10 +5,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.*;
 
-import storage.ColumnStore;
-import ingest.IngestService;
-import ingest.http.HttpIngestController;
-import ingest.model.Event;
+import smartquery.storage.ColumnStore;
+import smartquery.ingest.IngestService;
+import smartquery.ingest.http.HttpIngestController;
+import smartquery.ingest.model.Event;
 
 import java.util.Arrays;
 import java.util.List;

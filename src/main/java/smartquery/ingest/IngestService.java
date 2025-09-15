@@ -1,7 +1,7 @@
-package ingest;
+package smartquery.ingest;
 
-import ingest.model.Event;
-import storage.ColumnStore;
+import smartquery.ingest.model.Event;
+import smartquery.storage.ColumnStore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -93,7 +93,7 @@ public class IngestService {
     }
 
     // Query pass-through for manual testing and basic queries
-    public Iterable<storage.ColumnStore.Row> scan(String table, long fromTs, long toTs, Predicate<storage.ColumnStore.Row> filter) {
+    public Iterable<ColumnStore.Row> scan(String table, long fromTs, long toTs, Predicate<ColumnStore.Row> filter) {
         return store.scan(table, fromTs, toTs, filter);
     }
     
@@ -102,7 +102,7 @@ public class IngestService {
      */
     public List<Event> queryEvents(String table, long fromTs, long toTs) {
         List<Event> events = new ArrayList<>();
-        for (storage.ColumnStore.Row row : store.scan(table, fromTs, toTs, null)) {
+        for (ColumnStore.Row row : store.scan(table, fromTs, toTs, null)) {
             events.add(row.getOriginalEvent());
         }
         return events;
