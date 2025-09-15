@@ -66,7 +66,7 @@ public class IndexTypes {
                 ColumnStore.Row row = rows.get(i);
                 String value = extractStringValue(row, column);
                 if (value != null) {
-                    valueToRows.computeIfAbsent(value, _ -> new BitSet()).set(i);
+                    valueToRows.computeIfAbsent(value, k -> new BitSet()).set(i);
                 }
             }
         }

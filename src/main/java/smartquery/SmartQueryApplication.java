@@ -1,5 +1,9 @@
 package smartquery;
 
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.beans.factory.annotation.Autowired;
 import smartquery.storage.ColumnStore;
 import smartquery.ingest.IngestService;
 import smartquery.query.QueryService;
@@ -19,42 +23,39 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Main application class that wires together all SmartQuery components.
+ * Main Spring Boot application class that provides both web API and console interface.
  */
-public class SmartQueryApplication {
+@SpringBootApplication
+public class SmartQueryApplication implements CommandLineRunner {
     
-    // Core components
-    private final ColumnStore columnStore;
-    private final IngestService ingestService;
-    private final QueryService queryService;
-    private final IndexManager indexManager;
-    private final MetricsCollector metrics;
+    // Core components (injected by Spring)
+    @Autowired
+    private ColumnStore columnStore;
+    
+    @Autowired
+    private IngestService ingestService;
+    
+    @Autowired
+    private QueryService queryService;
+    
+    @Autowired
+    private IndexManager indexManager;
+    
+    @Autowired
+    private MetricsCollector metrics;
     
     // Background services
     private final ScheduledExecutorService metricsScheduler;
     private final AtomicBoolean running = new AtomicBoolean(true);
     
-    // Configuration
-    private final boolean loadSyntheticData;
-    private final int syntheticDataCount;
-    private final int metricsReportIntervalSeconds;
+    // Configuration (will be set from command line args)
+    private boolean loadSyntheticData = false;
+    private int syntheticDataCount = 10_000;
+    private int metricsReportIntervalSeconds = 30;
     
     
     public SmartQueryApplication() {
-        this(parseArgs(new String[0]));
-    }
-    
-    public SmartQueryApplication(Config config) {
-        this.loadSyntheticData = config.loadSyntheticData;
-        this.syntheticDataCount = config.syntheticDataCount;
-        this.metricsReportIntervalSeconds = config.metricsReportIntervalSeconds;
-        
-        this.metrics = new MetricsCollector();
-        this.columnStore = new ColumnStore();
-        this.ingestService = new IngestService(columnStore);
-        this.queryService = new QueryService(columnStore);
-        this.indexManager = new IndexManager();
-        
+        // Spring will inject dependencies
         this.metricsScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "metrics");
             t.setDaemon(true);
@@ -64,12 +65,43 @@ public class SmartQueryApplication {
     
     
     public static void main(String[] args) {
-        SmartQueryApplication app = new SmartQueryApplication(parseArgs(args));
+        SpringApplication.run(SmartQueryApplication.class, args);
+    }
+    
+    @Override
+    public void run(String... args) throws Exception {
+        // Parse command line arguments
+        for (int i = 0; i < args.length; i++) {
+            switch (args[i]) {
+                case "--synthetic-data":
+                    this.loadSyntheticData = true;
+                    if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                        this.syntheticDataCount = Integer.parseInt(args[++i]);
+                    }
+                    break;
+                case "--metrics-interval":
+                    if (i + 1 < args.length) {
+                        this.metricsReportIntervalSeconds = Integer.parseInt(args[++i]);
+                    }
+                    break;
+                case "--help":
+                    printUsage();
+                    System.exit(0);
+                    break;
+            }
+        }
         
-        Runtime.getRuntime().addShutdownHook(new Thread(app::shutdown));
+        // Setup shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
+        
+        System.out.println("\n🚀 SmartQuery is now running!");
+        System.out.println("🌐 Web Dashboard: http://localhost:8080");
+        System.out.println("📊 API Documentation: http://localhost:8080/actuator");
+        System.out.println("💻 Frontend (when running): http://localhost:3000");
+        System.out.println();
         
         try {
-            app.run();
+            runConsoleMode();
         } catch (Exception e) {
             System.err.println("Fatal error: " + e.getMessage());
             e.printStackTrace();
@@ -77,7 +109,7 @@ public class SmartQueryApplication {
         }
     }
     
-    public void run() {
+    public void runConsoleMode() {
         // Display startup banner
         displayStartupBanner();
         
@@ -181,9 +213,15 @@ public class SmartQueryApplication {
         while (running.get()) {
             try {
                 System.out.print("smartquery> ");
+                System.out.flush(); // Ensure prompt is displayed immediately
                 String input = reader.readLine();
                 
-                if (input == null || input.trim().isEmpty()) {
+                if (input == null) {
+                    // EOF reached (e.g., Ctrl+D or piped input ended)
+                    break;
+                }
+                
+                if (input.trim().isEmpty()) {
                     continue;
                 }
                 
@@ -471,32 +509,6 @@ public class SmartQueryApplication {
         return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
     
-    private static Config parseArgs(String[] args) {
-        Config config = new Config();
-        
-        for (int i = 0; i < args.length; i++) {
-            switch (args[i]) {
-                case "--synthetic-data":
-                    config.loadSyntheticData = true;
-                    if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
-                        config.syntheticDataCount = Integer.parseInt(args[++i]);
-                    }
-                    break;
-                case "--metrics-interval":
-                    if (i + 1 < args.length) {
-                        config.metricsReportIntervalSeconds = Integer.parseInt(args[++i]);
-                    }
-                    break;
-                case "--help":
-                    printUsage();
-                    System.exit(0);
-                    break;
-            }
-        }
-        
-        return config;
-    }
-    
     private static void printUsage() {
         System.out.println("SmartQuery Database Engine");
         System.out.println();
@@ -511,12 +523,6 @@ public class SmartQueryApplication {
         System.out.println("  java -jar smartquery.jar");
         System.out.println("  java -jar smartquery.jar --synthetic-data 50000");
         System.out.println("  java -jar smartquery.jar --synthetic-data --metrics-interval 60");
-    }
-    
-    public static class Config {
-        public boolean loadSyntheticData = false;
-        public int syntheticDataCount = 10_000;
-        public int metricsReportIntervalSeconds = 30;
     }
     
     // Getters for testing

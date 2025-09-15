@@ -12,7 +12,7 @@ description = 'SmartQuery'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(24)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -34,6 +34,7 @@ dependencies {
     // Spring Boot starters
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
     
     // Kafka client
     implementation 'org.apache.kafka:kafka-clients:3.5.1'
@@ -62,6 +63,11 @@ tasks.named('test') {
 
 application {
     mainClass = 'smartquery.SmartQueryApplication'
+}
+
+// Configure console input for the run task
+tasks.named('run') {
+    standardInput = System.in
 }
 
 // Additional tasks for development

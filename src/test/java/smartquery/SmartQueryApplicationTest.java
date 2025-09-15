@@ -22,12 +22,13 @@ class SmartQueryApplicationTest {
 
     @BeforeEach
     void setUp() {
-        // Create app with default config (no synthetic data)
-        SmartQueryApplication.Config config = new SmartQueryApplication.Config();
-        config.loadSyntheticData = false;
-        config.syntheticDataCount = 0;
-        config.metricsReportIntervalSeconds = 3600; // Long interval for tests
-        app = new SmartQueryApplication(config);
+        // For Spring Boot application, we'll use the default constructor
+        // and set configuration via system properties
+        System.setProperty("smartquery.synthetic-data.load", "false");
+        System.setProperty("smartquery.synthetic-data.count", "0");
+        System.setProperty("smartquery.metrics.report-interval", "3600");
+        
+        app = new SmartQueryApplication();
     }
 
     @AfterEach
