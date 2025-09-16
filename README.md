@@ -1,6 +1,6 @@
 # SmartQueryDB
 
-SmartQueryDB is a lightweight analytics engine written in Java that ingests streaming event data, stores it in a columnar format, and supports SQL-like queries with filtering, grouping, ordering, and aggregation. It features **adaptive ML-driven indexing** that learns from query patterns to automatically build/drop indexes, and it exposes **system metrics** for full observability.
+SmartQueryDB is a lightweight analytics engine written in Java that ingests streaming event data, stores it in a columnar format, and supports SQL-like queries with filtering, grouping, ordering, and aggregation. It features **adaptive indexing** that learns from query patterns to automatically build/drop indexes, and it exposes **system metrics** for full observability.
 
 ## Features
 - **Streaming ingestion** from HTTP, Kafka, or a synthetic data generator
