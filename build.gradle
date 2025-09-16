@@ -42,6 +42,9 @@ dependencies {
     // JSON processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     
+    // SQLite for benchmarking comparisons
+    implementation 'org.xerial:sqlite-jdbc:3.44.1.0'
+    
     // Development tools
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'

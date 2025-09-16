@@ -13,5 +13,9 @@ SmartQueryDB is a lightweight analytics engine written in Java that ingests stre
 
 
 ## Screenshot
+
+### Dashboard
 ![SmartQuery Dashboard](images/dashboard.png)
 
+### Performance Comparison vs SQLite
+![SQLite Comparison](images/performance_comparison.png)
