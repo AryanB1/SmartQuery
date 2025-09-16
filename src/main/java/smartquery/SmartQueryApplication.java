@@ -94,11 +94,7 @@ public class SmartQueryApplication implements CommandLineRunner {
         // Setup shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
         
-        System.out.println("\n🚀 SmartQuery is now running!");
-        System.out.println("🌐 Web Dashboard: http://localhost:8080");
-        System.out.println("📊 API Documentation: http://localhost:8080/actuator");
-        System.out.println("💻 Frontend (when running): http://localhost:3000");
-        System.out.println();
+    System.out.println("\nSmartQuery is now running.");
         
         try {
             runConsoleMode();
@@ -207,7 +203,7 @@ public class SmartQueryApplication implements CommandLineRunner {
     }
     
     private void startConsoleRepl() {
-        System.out.println("SQL Console (type 'help' for commands, 'exit' to quit):");
+    System.out.println("SQL Console (type 'help' for commands, 'exit' to quit):");
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
         
         while (running.get()) {
@@ -255,7 +251,7 @@ public class SmartQueryApplication implements CommandLineRunner {
             }
         }
         
-        System.out.println("Goodbye!");
+    // Session ended
     }
     
     private void executeQuery(String sql) {
